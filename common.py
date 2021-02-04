@@ -21,6 +21,7 @@ def get_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument("--task",           type=str,       default='pretext',
                         choices=['pretext', 'lincls'])
+    parser.add_argument("--dataset",        type=str,       default='imagenet')
     parser.add_argument("--freeze",         action='store_true')
     parser.add_argument("--backbone",       type=str,       default='resnet50')
     parser.add_argument("--batch_size",     type=int,       default=256)
@@ -38,6 +39,7 @@ def get_arguments():
     parser.add_argument("--steps",          type=int,       default=0)
     parser.add_argument("--epochs",         type=int,       default=200)
 
+    parser.add_argument("--evaluate",       action='store_true')
     parser.add_argument("--checkpoint",     action='store_true')
     parser.add_argument("--history",        action='store_true')
     parser.add_argument("--tensorboard",    action='store_true')
@@ -107,7 +109,7 @@ def create_stamp():
 
 
 def search_same(args):
-    search_ignore = ['checkpoint', 'history', 'tensorboard', 
+    search_ignore = ['evaluate', 'checkpoint', 'history', 'tensorboard', 
                      'tb_interval', 'snapshot', 'summary',
                      'src_path', 'data_path', 'result_path', 
                      'resume', 'stamp', 'gpus', 'ignore_search']
@@ -127,6 +129,9 @@ def search_same(args):
         for k, v in vars(args).items():
             if k in search_ignore:
                 continue
+
+            if k == 'dataset' and k not in desc:
+                desc[k] = 'imagenet'
                 
             if v != desc[k]:
                 # if stamp == '210120_Wed_05_19_52':
@@ -157,7 +162,7 @@ def search_same(args):
                     
                     if len(ckpt_list) > 0:
                         args.snapshot = f'{args.result_path}/{args.task}/{args.stamp}/checkpoint/{ckpt_list[-1]}'
-                        initial_epoch = int(ckpt_list[-1].split('_')[0])
+                        initial_epoch = int(df['epoch'].iloc[-1]) + 1
                     else:
                         print('{} Training already finished!!!'.format(stamp))
                         return args, -1

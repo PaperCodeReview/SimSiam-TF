@@ -18,14 +18,29 @@ class Augment:
         x = self._resize(x)
         x = self._random_color_jitter(x, p=.8)
         x = self._random_grayscale(x, p=.2)
-        x = self._random_gaussian_blur(x, p=.5)
+        if self.args.dataset == 'imagenet':
+            x = self._random_gaussian_blur(x, p=.5)
         x = self._random_hflip(x)
         x = self._standardize(x)
         return x
 
     def _augment_lincls(self, x, shape, coord=[[[0., 0., 1., 1.]]]):
-        x = self._crop(x, shape, coord)
-        x = self._resize(x)
+        x = tf.saturate_cast(x, tf.uint8)
+        if self.args.dataset == 'imagenet':
+            if self.mode == 'train':
+                x = self._crop(x, shape, coord)
+            else:
+                x = self._centercrop(x, shape)
+
+            x = self._resize(x)
+
+        if self.mode == 'train':
+            x = self._random_color_jitter(x, p=.8)
+            x = self._random_grayscale(x, p=.2)
+            if self.args.dataset == 'imagenet':
+                x = self._random_gaussian_blur(x, p=.5)
+            x = self._random_hflip(x)
+
         x = self._standardize(x)
         return x
 
@@ -46,7 +61,25 @@ class Augment:
 
         offset_height, offset_width, _ = tf.unstack(bbox_begin)
         target_height, target_width, _ = tf.unstack(bbox_size)
-        x = tf.slice(x, [offset_height, offset_width, 0], [target_height, target_width, 3])
+        x = tf.slice(x, [offset_height, offset_width, 0], [target_height, target_width, -1])
+        return x
+
+    def _centercrop(self, x, shape):
+        if tf.less(shape[0], self.args.img_size):
+            offset_height = 0
+            target_height = shape[0]
+        else:
+            offset_height = tf.maximum(0, shape[0]-self.args.img_size) // 2
+            target_height = self.args.img_size
+
+        if tf.less(shape[1], self.args.img_size):
+            offset_width = 0
+            target_width = shape[1]
+        else:
+            offset_width = tf.maximum(0, shape[1]-self.args.img_size) // 2
+            target_width = self.args.img_size
+
+        x = tf.slice(x, [offset_height, offset_width, 0], [target_height, target_width, -1])
         return x
 
     def _resize(self, x):

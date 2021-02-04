@@ -1,6 +1,7 @@
 import os
 import six
 import yaml
+import tqdm
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -9,6 +10,8 @@ from tensorflow.keras.callbacks import ModelCheckpoint
 from tensorflow.keras.callbacks import CSVLogger
 from tensorflow.keras.callbacks import TensorBoard
 from tensorflow.keras.experimental import CosineDecay
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.metrics import accuracy_score
 
 from common import create_stamp
 
@@ -90,7 +93,7 @@ def create_callbacks(args, logger, initial_epoch):
                         f'history - {args.history} | '
                         f'tensorboard - {args.tensorboard}')
 
-    callbacks = []        
+    callbacks = []
     if args.checkpoint:
         if args.task == 'pretext':
             callbacks.append(ModelCheckpoint(
@@ -108,13 +111,13 @@ def create_callbacks(args, logger, initial_epoch):
                 save_best_only=True))
         else:
             callbacks.append(ModelCheckpoint(
-                filepath='{args.result_path}/{args.task}/{args.stamp}/checkpoint/latest',
+                filepath=f'{args.result_path}/{args.task}/{args.stamp}/checkpoint/latest',
                 monitor='val_acc1',
                 mode='max',
                 verbose=1,
                 save_weights_only=True))
             callbacks.append(ModelCheckpoint(
-                filepath='{args.result_path}/{args.task}/{args.stamp}/checkpoint/best',
+                filepath=f'{args.result_path}/{args.task}/{args.stamp}/checkpoint/best',
                 monitor='val_acc1',
                 mode='max',
                 verbose=1,

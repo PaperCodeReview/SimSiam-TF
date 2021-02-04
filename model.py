@@ -1,46 +1,26 @@
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.layers import Input
-from tensorflow.keras.layers import BatchNormalization
 from tensorflow.keras.layers import Activation
 from tensorflow.keras.layers import MaxPooling2D
-from tensorflow.keras.layers.experimental import SyncBatchNormalization
+from tensorflow.keras.layers import Add
 from tensorflow.keras import Sequential
 from tensorflow.keras import Model
 from tensorflow.keras.regularizers import l2
 from tensorflow.keras.initializers import Constant
 
-from tensorflow.keras.layers import Conv2D
-from tensorflow.keras.layers import Dense
+from resnet import ResNet18
+from layer import _conv2d
+from layer import _batchnorm
+from layer import _dense
 
 
-WEIGHTS_HASHES = {'resnet50' : '4d473c1dd8becc155b73f8504c6f6626',}
-MODEL_DICT = {'resnet50' : tf.keras.applications.ResNet50,}
-FAMILY_DICT = {'resnet50' : tf.python.keras.applications.resnet,}
-BatchNorm_DICT = {
-    "bn": BatchNormalization,
-    "syncbn": SyncBatchNormalization}
-
-
-def _conv2d(**custom_kwargs):
-    def _func(*args, **kwargs):
-        kwargs.update(**custom_kwargs)
-        return Conv2D(*args, **kwargs)
-    return _func
-
-
-def _batchnorm(norm='bn', **custom_kwargs):
-    def _func(*args, **kwargs):
-        kwargs.update(**custom_kwargs)
-        return BatchNorm_DICT[norm](*args, **kwargs)
-    return _func
-
-
-def _dense(**custom_kwargs):
-    def _func(*args, **kwargs):
-        kwargs.update(**custom_kwargs)
-        return Dense(*args, **kwargs)
-    return _func
+MODEL_DICT = {
+    'resnet18' : ResNet18,
+    'resnet50' : tf.keras.applications.ResNet50,}
+FAMILY_DICT = {
+    'resnet18' : tf.python.keras.applications.resnet,
+    'resnet50' : tf.python.keras.applications.resnet,}
 
 
 def set_lincls(args, backbone):
@@ -71,26 +51,30 @@ class SimSiam(Model):
         FAMILY_DICT[self.args.backbone].BatchNormalization = _batchnorm(norm=norm)
         FAMILY_DICT[self.args.backbone].Dense = _dense(**DEFAULT_ARGS)
 
+        DEFAULT_ARGS.update({'norm': norm})
         backbone = MODEL_DICT[self.args.backbone](
             include_top=False,
             weights=None,
             input_shape=(self.args.img_size, self.args.img_size, 3),
-            pooling='avg')
-        
+            pooling='avg',
+            **DEFAULT_ARGS if self.args.backbone == 'resnet18' else {})
+        DEFAULT_ARGS.pop('norm')
+
         x = backbone.output
 
         # Projection MLP
-        for i in range(2):
+        num_mlp = 3 if self.args.dataset == 'imagenet' else 2
+        for i in range(num_mlp-1):
             x = _dense(**DEFAULT_ARGS)(self.args.proj_dim, name=f'proj_fc{i+1}')(x)
             if self.args.proj_bn_hidden:
                 x = _batchnorm(norm=norm)(epsilon=1.001e-5, name=f'proj_bn{i+1}')(x)
             x = Activation('relu', name=f'proj_relu{i+1}')(x)
 
-        x_proj = _dense(**DEFAULT_ARGS)(self.args.proj_dim, name='proj_fc3')(x)
+        x = _dense(**DEFAULT_ARGS)(self.args.proj_dim, name='proj_fc3')(x)
         if self.args.proj_bn_output:
             x = _batchnorm(norm=norm)(epsilon=1.001e-5, name='proj_bn3')(x)
         
-        self.encoder = Model(backbone.input, [x_proj, x], name='encoder')
+        self.encoder = Model(backbone.input, x, name='encoder')
 
         # Prediction MLP
         self.prediction_MLP = Sequential()
@@ -124,10 +108,10 @@ class SimSiam(Model):
         imgs = tf.concat(data, axis=0)
         with tf.GradientTape() as tape:
             z = tf.cast(self.encoder(imgs, training=True), tf.float32)
-            z1, z2 = tf.split(z, num_or_size_splits=2, axis=0)
+            z1, z2 = [tf.squeeze(_z) for _z in tf.split(z, num_or_size_splits=2, axis=0)]
 
             p = tf.cast(self.prediction_MLP(z, training=True), tf.float32)
-            p1, p2 = tf.split(p, num_or_size_splits=2, axis=0)
+            p1, p2 = [tf.squeeze(_p) for _p in tf.split(p, num_or_size_splits=2, axis=0)]
 
             loss_simsiam = (self._loss(p1, tf.stop_gradient(z2)) + self._loss(p2, tf.stop_gradient(z1))) / 2
             loss_simsiam = tf.reduce_mean(loss_simsiam)
@@ -140,5 +124,10 @@ class SimSiam(Model):
         grads = tape.gradient(total_loss, trainable_vars)
         self.optimizer.apply_gradients(zip(grads, trainable_vars))
 
-        results = {'loss': loss, 'loss_simsiam': loss_simsiam, 'weight_decay': loss_decay}
+        outputs_std = tf.reduce_mean(tf.math.reduce_std(tf.math.l2_normalize(z1), axis=-1))
+        results = {
+            'loss': loss, 
+            'loss_simsiam': loss_simsiam, 
+            'weight_decay': loss_decay, 
+            'std': outputs_std}
         return results

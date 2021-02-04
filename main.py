@@ -21,13 +21,16 @@ def train_pretext(args, logger, initial_epoch, strategy, num_workers):
     ##########################
     # Dataset
     ##########################
-    trainset = set_dataset(args.task, args.data_path)
+    trainset, valset = set_dataset(args.task, args.dataset, args.data_path)
     steps_per_epoch = args.steps or len(trainset) // args.batch_size
 
     logger.info("TOTAL STEPS OF DATASET FOR TRAINING")
     logger.info("========== TRAINSET ==========")
     logger.info(f"    --> {len(trainset)}")
     logger.info(f"    --> {steps_per_epoch}")
+
+    logger.info("=========== VALSET ===========")
+    logger.info(f"    --> {len(valset)}")
 
 
     ##########################
@@ -41,8 +44,9 @@ def train_pretext(args, logger, initial_epoch, strategy, num_workers):
             optimizer=tf.keras.optimizers.SGD(lr_scheduler, momentum=.9),
             loss=tf.keras.losses.cosine_similarity,
             run_eagerly=False)
-    
-    train_generator = DataLoader(args, 'train', trainset, args.batch_size, num_workers).dataloader
+
+    train_generator = DataLoader(args, args.task, 'train', trainset, args.batch_size, num_workers).dataloader
+
 
     ##########################
     # Train
@@ -63,11 +67,11 @@ def train_pretext(args, logger, initial_epoch, strategy, num_workers):
 
 
 def train_lincls(args, logger, initial_epoch, strategy, num_workers):
-    assert args.snapshot is not None, 'pretrained weight is needed!'
+    # assert args.snapshot is not None, 'pretrained weight is needed!'
     ##########################
     # Dataset
     ##########################
-    trainset, valset = set_dataset(args.task, args.data_path)
+    trainset, valset = set_dataset(args.task, args.dataset, args.data_path)
     steps_per_epoch = args.steps or len(trainset) // args.batch_size
     validation_steps = len(valset) // args.batch_size
 
@@ -84,6 +88,9 @@ def train_lincls(args, logger, initial_epoch, strategy, num_workers):
     ##########################
     # Model & Generator
     ##########################
+    train_generator = DataLoader(args, args.task, 'train', trainset, args.batch_size, num_workers).dataloader
+    val_generator = DataLoader(args, args.task, 'val', valset, args.batch_size, num_workers).dataloader
+        
     with strategy.scope():
         backbone = SimSiam(args, logger)
         model = set_lincls(args, backbone.encoder)
@@ -91,12 +98,10 @@ def train_lincls(args, logger, initial_epoch, strategy, num_workers):
         lr_scheduler = OptionalLearningRateSchedule(args, steps_per_epoch, initial_epoch)
         model.compile(
             optimizer=tf.keras.optimizers.SGD(lr_scheduler, momentum=.9),
-            metrics=[tf.keras.metrics.TopKCategoricalAccuracy(1, 'acc1', dtype=tf.float32),
-                     tf.keras.metrics.TopKCategoricalAccuracy(5, 'acc5', dtype=tf.float32)],
-            loss=tf.keras.losses.CategoricalCrossentropy(from_logits=True, name='loss'))
-
-    train_generator = DataLoader(args, 'train', trainset, args.batch_size, num_workers).dataloader
-    val_generator = DataLoader(args, 'val', valset, args.batch_size, num_workers).dataloader
+            metrics=[tf.keras.metrics.SparseTopKCategoricalAccuracy(1, 'acc1', dtype=tf.float32),
+                     tf.keras.metrics.SparseTopKCategoricalAccuracy(5, 'acc5', dtype=tf.float32)],
+            loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True, name='loss'),
+            run_eagerly=False)
 
 
     ##########################
@@ -123,9 +128,15 @@ def main():
     set_seed()
     args = get_arguments()
     if args.task == 'pretext':
-        args.lr = 0.5 * float(args.batch_size / 256)
+        if args.dataset == 'imagenet':
+            args.lr = 0.5 * float(args.batch_size / 256)
+        elif args.dataset == 'cifar10':
+            args.lr = 0.03 * float(args.batch_size / 256)
     else:
-        args.lr = 30. * float(args.batch_size / 256)
+        if args.dataset == 'imagenet' and args.freeze:
+            args.lr = 30. * float(args.batch_size / 256)
+        else:# args.dataset == 'cifar10':
+            args.lr = 1.8 * float(args.batch_size / 256)
 
     args, initial_epoch = search_same(args)
     if initial_epoch == -1:
