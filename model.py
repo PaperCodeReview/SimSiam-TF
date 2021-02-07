@@ -61,6 +61,7 @@ class SimSiam(Model):
         DEFAULT_ARGS.pop('norm')
 
         x = backbone.output
+        outputs = []
 
         # Projection MLP
         num_mlp = 3 if self.args.dataset == 'imagenet' else 2
@@ -74,18 +75,20 @@ class SimSiam(Model):
         if self.args.proj_bn_output:
             x = _batchnorm(norm=norm)(epsilon=1.001e-5, name='proj_bn3')(x)
         
-        self.encoder = Model(backbone.input, x, name='encoder')
+        outputs.append(x)
 
         # Prediction MLP
-        self.prediction_MLP = Sequential()
-        self.prediction_MLP.add(_dense(**DEFAULT_ARGS)(self.args.pred_dim, name='pred_fc1'))
+        x = _dense(**DEFAULT_ARGS)(self.args.pred_dim, name='pred_fc1')(x)
         if self.args.pred_bn_hidden:
-            self.prediction_MLP.add(_batchnorm(norm=norm)(epsilon=1.001e-5, name='pred_bn1'))
-        self.prediction_MLP.add(Activation('relu', name='pred_relu1'))
+            x = _batchnorm(norm=norm)(epsilon=1.001e-5, name='pred_bn1')(x)
+        x = Activation('relu', name='pred_relu1')(x)
 
-        self.prediction_MLP.add(_dense(**DEFAULT_ARGS)(self.args.proj_dim, name='pred_fc2'))
+        x = _dense(**DEFAULT_ARGS)(self.args.proj_dim, name='pred_fc2')(x)
         if self.args.pred_bn_output:
-            self.prediction_MLP.add(_batchnorm(norm=norm)(epsilon=1.001e-5, name='pred_bn2'))
+            x = _batchnorm(norm=norm)(epsilon=1.001e-5, name='pred_bn2')(x)
+
+        outputs.append(x)
+        self.encoder = Model(backbone.input, outputs, name='encoder')
         
         # Load checkpoints
         if self.args.snapshot:
@@ -102,32 +105,34 @@ class SimSiam(Model):
             optimizer=optimizer, run_eagerly=run_eagerly)
 
         self._loss = loss
-        self._replica_context = tf.distribute.get_replica_context()
 
     def train_step(self, data):
-        imgs = tf.concat(data, axis=0)
+        img1, img2 = data
         with tf.GradientTape() as tape:
-            z = tf.cast(self.encoder(imgs, training=True), tf.float32)
-            z1, z2 = [tf.squeeze(_z) for _z in tf.split(z, num_or_size_splits=2, axis=0)]
+            z1, p1 = self.encoder(img1, training=True)
+            z2, p2 = self.encoder(img2, training=True)
+            
+            if self.args.stop_gradient:
+                loss_simsiam = (self._loss(p1, tf.stop_gradient(z2)) + self._loss(p2, tf.stop_gradient(z1))) / 2
+            else:
+                loss_simsiam = (self._loss(p1, z2) + self._loss(p2, z1)) / 2
 
-            p = tf.cast(self.prediction_MLP(z, training=True), tf.float32)
-            p1, p2 = [tf.squeeze(_p) for _p in tf.split(p, num_or_size_splits=2, axis=0)]
-
-            loss_simsiam = (self._loss(p1, tf.stop_gradient(z2)) + self._loss(p2, tf.stop_gradient(z1))) / 2
             loss_simsiam = tf.reduce_mean(loss_simsiam)
-            loss_decay = sum(self.encoder.losses + self.prediction_MLP.losses)
+            loss_decay = sum(self.encoder.losses)
 
             loss = loss_simsiam + loss_decay
             total_loss = loss / self._num_workers
 
-        trainable_vars = self.encoder.trainable_variables + self.prediction_MLP.trainable_variables
+        trainable_vars = self.encoder.trainable_variables
         grads = tape.gradient(total_loss, trainable_vars)
         self.optimizer.apply_gradients(zip(grads, trainable_vars))
 
-        outputs_std = tf.reduce_mean(tf.math.reduce_std(tf.math.l2_normalize(z1), axis=-1))
+        proj_std = tf.reduce_mean(tf.math.reduce_std(tf.math.l2_normalize(tf.concat((z1, z2), axis=0), axis=-1), axis=-1))
+        pred_std = tf.reduce_mean(tf.math.reduce_std(tf.math.l2_normalize(tf.concat((p1, p2), axis=0), axis=-1), axis=-1))
         results = {
             'loss': loss, 
             'loss_simsiam': loss_simsiam, 
             'weight_decay': loss_decay, 
-            'std': outputs_std}
+            'proj_std': proj_std,
+            'pred_std': pred_std}
         return results

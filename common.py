@@ -27,6 +27,7 @@ def get_arguments():
     parser.add_argument("--batch_size",     type=int,       default=256)
     parser.add_argument("--classes",        type=int,       default=1000)
     parser.add_argument("--img_size",       type=int,       default=224)
+    parser.add_argument("--stop_gradient",  action='store_true')
     parser.add_argument("--proj_dim",       type=int,       default=2048)
     parser.add_argument("--proj_bn_hidden", action='store_true')
     parser.add_argument("--proj_bn_output", action='store_true')
@@ -126,18 +127,31 @@ def search_same(args):
             continue
 
         flag = True
+        save_flag = False
         for k, v in vars(args).items():
             if k in search_ignore:
                 continue
 
             if k == 'dataset' and k not in desc:
                 desc[k] = 'imagenet'
+                save_flag = True
+
+            if k == 'stop_gradient' and k not in desc:
+                desc[k] = True
+                save_flag = True
                 
             if v != desc[k]:
                 # if stamp == '210120_Wed_05_19_52':
                 #     print(stamp, k, desc[k], v)
                 flag = False
                 break
+
+        if save_flag:
+            yaml.dump(
+                desc, 
+                open(f'{args.result_path}/{args.task}/{stamp}/model_desc.yml', 'w'), 
+                default_flow_style=False)
+            save_flag = False
         
         if flag:
             args.stamp = stamp
