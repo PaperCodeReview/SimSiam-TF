@@ -11,6 +11,7 @@ To train SimSiam,
 ```
 python main.py \
     --task pretext \
+    --stop_gradient \
     --proj_bn_hidden \
     --proj_bn_output \
     --pred_bn_hidden \
