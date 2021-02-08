@@ -43,6 +43,12 @@ python main.py \
 | --------------------- | ----- | ---------------- | --------------- |
 | ResNet50 (200 epochs) |  256  |       68.1       |       -         |
 
+### CIFAR10
+|         Model         | batch | Accuracy (paper) | Accuracy (ours) |
+| --------------------- | ----- | ---------------- | --------------- |
+| ResNet50 (800 epochs) |  256  |       91.1       |       90.7      |
+<img width=50% height=50% src='./result_cifar10.png'>
+
 ## Citation
 ```
 @article{Chen2020ExploringSS,

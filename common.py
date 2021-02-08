@@ -111,7 +111,7 @@ def create_stamp():
 
 def search_same(args):
     search_ignore = ['evaluate', 'checkpoint', 'history', 'tensorboard', 
-                     'tb_interval', 'snapshot', 'summary',
+                     'tb_interval', 'summary',
                      'src_path', 'data_path', 'result_path', 
                      'resume', 'stamp', 'gpus', 'ignore_search']
     if len(args.ignore_search) > 0:
@@ -139,7 +139,7 @@ def search_same(args):
             if k == 'stop_gradient' and k not in desc:
                 desc[k] = True
                 save_flag = True
-                
+
             if v != desc[k]:
                 # if stamp == '210120_Wed_05_19_52':
                 #     print(stamp, k, desc[k], v)
