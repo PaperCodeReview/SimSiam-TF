@@ -47,7 +47,7 @@ python main.py \
 |         Model         | batch | Accuracy (paper) | Accuracy (ours) |
 | --------------------- | ----- | ---------------- | --------------- |
 | ResNet50 (800 epochs) |  256  |       91.1       |       90.7      |
-<img width=50% height=50% src='./result_cifar10.png'>
+<img width=70% height=70% src='./result_cifar10.png'>
 
 ## Citation
 ```
