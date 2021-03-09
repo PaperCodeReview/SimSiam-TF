@@ -91,7 +91,7 @@ class SimSiam(Model):
         self.encoder = Model(backbone.input, outputs, name='encoder')
         
         # Load checkpoints
-        if self.args.snapshot:
+        if self.args.snapshot and self.args.task == "pretext":
             self.load_weights(self.args.snapshot)
             logger.info('Load weights at {}'.format(self.args.snapshot))
 
@@ -127,8 +127,8 @@ class SimSiam(Model):
         grads = tape.gradient(total_loss, trainable_vars)
         self.optimizer.apply_gradients(zip(grads, trainable_vars))
 
-        proj_std = tf.reduce_mean(tf.math.reduce_std(tf.math.l2_normalize(tf.concat((z1, z2), axis=0), axis=-1), axis=-1))
-        pred_std = tf.reduce_mean(tf.math.reduce_std(tf.math.l2_normalize(tf.concat((p1, p2), axis=0), axis=-1), axis=-1))
+        proj_std = tf.reduce_mean(tf.math.reduce_std(tf.math.l2_normalize(tf.concat((z1, z2), axis=0), axis=-1), axis=0))
+        pred_std = tf.reduce_mean(tf.math.reduce_std(tf.math.l2_normalize(tf.concat((p1, p2), axis=0), axis=-1), axis=0))
         results = {
             'loss': loss, 
             'loss_simsiam': loss_simsiam, 

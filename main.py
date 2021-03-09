@@ -94,6 +94,9 @@ def train_lincls(args, logger, initial_epoch, strategy, num_workers):
     with strategy.scope():
         backbone = SimSiam(args, logger)
         model = set_lincls(args, backbone.encoder)
+        if args.resume and args.snapshot:
+            model.load_weights(args.snapshot)
+            logger.info('Load weights at {}'.format(args.snapshot))
 
         lr_scheduler = OptionalLearningRateSchedule(args, steps_per_epoch, initial_epoch)
         model.compile(

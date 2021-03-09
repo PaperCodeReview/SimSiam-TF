@@ -126,9 +126,14 @@ def create_callbacks(args, logger, initial_epoch):
 
     if args.history:
         os.makedirs(f'{args.result_path}/{args.task}/{args.stamp}/history', exist_ok=True)
-        callbacks.append(CustomCSVLogger(
-            filename=f'{args.result_path}/{args.task}/{args.stamp}/history/epoch.csv',
-            separator=',', append=True))
+        if args.task == 'pretext':
+            callbacks.append(CustomCSVLogger(
+                filename=f'{args.result_path}/{args.task}/{args.stamp}/history/epoch.csv',
+                separator=',', append=True))
+        else:
+            callbacks.append(CSVLogger(
+                filename=f'{args.result_path}/{args.task}/{args.stamp}/history/epoch.csv',
+                separator=',', append=True))
 
     if args.tensorboard:
         callbacks.append(TensorBoard(
