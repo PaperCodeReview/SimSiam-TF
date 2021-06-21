@@ -1,6 +1,6 @@
 # SimSiam-TF
 
-This is an unofficial implementation of SimSiam ([Exploring Simple Siamese Representation Learning, 2020.](https://arxiv.org/abs/2011.10566)).
+This is an unofficial implementation of SimSiam ([Exploring Simple Siamese Representation Learning, CVPR 2021.](https://arxiv.org/abs/2011.10566)).
 
 ## Requirements
 - python >= 3.6
